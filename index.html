@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Texas Lab · 德州概率计算器</title>
+<link rel="stylesheet" href="./src/styles/main.css?v=20260829-hand-picker">
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <div class="brand"><div class="logo">TL</div><div><h1>Texas Lab</h1><div class="sub">精确组合概率 + 多核胜率模拟</div></div></div>
+  <nav class="tabs" aria-label="功能切换">
+    <button class="tab-btn active" data-tab="hands">起手牌胜率表</button>
+    <button class="tab-btn" data-tab="common">常见概率</button>
+    <button class="tab-btn" data-tab="calculator">自定义计算器</button>
+  </nav>
+  <div class="header-actions">
+    <div class="actions hidden" id="calculatorActions"><button class="btn" id="clearBtn">清空牌面</button><button class="btn" id="sampleBtn">载入组合听牌</button><button class="btn primary" id="calcBtn">开始计算</button></div>
+    <button class="btn game-entry" id="gameBtn"><span class="game-entry-dot"></span>Game</button>
+  </div>
+</header>
+
+<section class="tab game-tab" id="tab-game">
+  <div class="game-toolbar">
+    <div>
+      <div class="game-kicker">6-MAX · 100BB · NO RAKE</div>
+      <h2>最优决策训练</h2>
+      <p>完整牌局 · 固定下注尺度 · 行动后查看 EV</p>
+    </div>
+    <div class="game-toolbar-actions">
+      <span class="solver-badge"><i></i>当前求解模型下的近似最优策略</span>
+      <div class="seed-controls" title="同一种子会复现发牌和 Bot 的随机决策"><label>Seed <input id="handSeedInput" inputmode="numeric" maxlength="10" aria-label="本手牌种子"></label><button class="btn" id="loadSeedBtn">载入</button></div>
+      <button class="btn" id="revealBotCardsBtn" title="只改变牌桌显示，不会向 EV 求解器暴露对手底牌" disabled>查看 Bot 手牌</button>
+      <button class="btn" id="gameExitBtn">返回工具</button>
+      <button class="btn primary" id="startGameBtn">开始</button>
+      <button class="btn primary hidden" id="newHandBtn">新一手</button>
+    </div>
+  </div>
+
+  <div class="game-layout">
+    <main class="game-main">
+      <section class="poker-table-wrap">
+        <div class="poker-table" id="pokerTable">
+          <div class="table-felt">
+            <div class="pot-label">底池 <b id="gamePot">--</b></div>
+            <div class="game-board" id="gameBoard"></div>
+            <div class="street-label" id="gameStreet">等待开始</div>
+          </div>
+          <div id="gameSeats"></div>
+        </div>
+      </section>
+
+      <section class="panel decision-panel">
+        <div class="decision-head">
+          <div><span class="decision-eyebrow">YOUR DECISION</span><h3 id="decisionTitle">准备开始</h3></div>
+          <div class="decision-context"><span>当前下注 <b id="gameCurrentBet">--</b></span><span>本街加注 <b id="gameRaiseCount">--</b></span></div>
+        </div>
+        <div class="action-buttons" id="gameActions">
+          <button class="hidden" data-action="check">Check</button>
+          <button class="hidden" data-action="call">Call</button>
+          <button class="raise hidden" data-action="raise">Raise</button>
+          <button class="fold hidden" data-action="fold">Fold</button>
+        </div>
+        <div class="decision-wait" id="decisionWait">点击“开始”发牌，进入训练</div>
+      </section>
+
+      <section class="panel analysis-panel locked" id="gameAnalysis">
+        <div class="analysis-lock" id="analysisLock"><span>⌁</span><b>等待牌局开始</b><small>开始后完成一次行动，即可查看策略频率、EV 与评分</small></div>
+        <div class="analysis-content hidden" id="analysisContent">
+          <div class="analysis-heading">
+            <div><span class="decision-eyebrow">DECISION REVIEW</span><h3 id="analysisVerdict"></h3></div>
+            <div class="loss-pill" id="analysisLoss"></div>
+          </div>
+          <div class="ev-list" id="analysisActions"></div>
+          <div class="analysis-summary" id="analysisSummary"></div>
+          <div class="decision-explanation" id="analysisExplanation"></div>
+          <div class="analysis-method" id="analysisMethod"></div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="game-sidebar">
+      <section class="panel solver-log-panel" id="solverLogPanel">
+        <div class="side-head solver-log-head"><div><span class="decision-eyebrow">SOLVER LOG</span><h3>求解日志</h3></div><button class="text-button solver-log-toggle" id="solverLogToggle" type="button" aria-expanded="true" aria-controls="solverLogContent">收起</button></div>
+        <div class="solver-log-content" id="solverLogContent">
+          <div class="solver-log-list" id="solverLog" role="log" aria-live="polite"><div class="solver-log-empty">开始牌局后显示缓存命中、现场训练和性能信息</div></div>
+        </div>
+      </section>
+      <section class="panel history-panel">
+        <div class="side-head"><div><span class="decision-eyebrow">LIVE HAND</span><h3>行动记录</h3></div><div class="history-tools"><button class="text-button" id="exportGameHistoryBtn">复制完整记录</button><span id="handNumber">#-</span></div></div>
+        <div class="history-list" id="gameHistory"><div class="history-empty">牌局尚未开始</div></div>
+      </section>
+      <section class="panel stats-panel">
+        <div class="side-head"><div><span class="decision-eyebrow">TRAINING</span><h3>训练统计</h3></div><button class="text-button" id="resetStatsBtn">重置</button></div>
+        <div class="stats-grid">
+          <div><span>总手数</span><b id="statHands">0</b></div><div><span>总决策</span><b id="statDecisions">0</b></div>
+          <div><span>平均 EV 损失</span><b id="statAverage">0.00</b></div><div><span>每 100 手损失</span><b id="statPer100">0.00</b></div>
+        </div>
+        <div class="street-stats" id="streetStats"></div>
+        <div class="stats-breakdown" id="statsBreakdown"></div>
+      </section>
+    </aside>
+  </div>
+
+  <section class="panel review-panel hidden" id="handReview">
+    <div class="review-head"><div><span class="decision-eyebrow">HAND REVIEW</span><h3>本手复盘</h3></div><div id="reviewResult"></div></div>
+    <div class="review-timeline" id="reviewTimeline"></div>
+  </section>
+</section>
+
+<section class="tab" id="tab-calculator">
+<div class="calc-layout">
+<aside class="panel left">
+  <div class="section">
+    <div class="section-title">计算条件 <span class="note">全部使用单击选择</span></div>
+    <div class="choice-group"><div class="choice-label">桌面人数</div><div class="choices" id="playersChoices"></div></div>
+    <div class="choice-group"><div class="choice-label">当前街道</div><div class="choices" id="streetChoices"></div></div>
+    <div class="choice-group"><div class="choice-label">计算到</div><div class="choices" id="targetChoices"></div></div>
+    <div class="choice-group"><div class="choice-label">胜率模拟精度</div><div class="choices" id="iterationChoices"></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">快速选择起手牌 <span class="note">也可直接手动选牌</span></div>
+    <div class="templates">
+      <button class="template" data-template="sc">同花连张</button>
+      <button class="template" data-template="oc">非同花连张</button>
+      <button class="template" data-template="suited">同花牌</button>
+      <button class="template" data-template="pair">口袋对子</button>
+      <button class="template" data-template="aks">AKs</button>
+      <button class="template" data-template="ako">AKo</button>
+      <button class="template" data-template="gap">同花隔张</button>
+      <button class="template" data-template="broadway">两张大牌</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">手动选择牌面 <span class="note">点槽位，再点牌</span></div>
+    <div class="slot-lines">
+      <div class="slot-line"><div class="slot-name">手牌</div><div class="card-slot" data-slot="h0"></div><div class="card-slot" data-slot="h1"></div></div>
+      <div class="slot-line"><div class="slot-name">公共牌</div><div class="card-slot" data-slot="b0"></div><div class="card-slot" data-slot="b1"></div><div class="card-slot" data-slot="b2"></div><div class="card-slot" data-slot="b3"></div><div class="card-slot" data-slot="b4"></div></div>
+    </div>
+    <div class="deck" id="deck"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">期望输出 <span class="note">事件允许重叠</span></div>
+    <div class="goals" id="goals">
+      <label class="check"><input type="checkbox" value="pair">至少一对</label>
+      <label class="check"><input type="checkbox" value="twoPair">两对或更好</label>
+      <label class="check"><input type="checkbox" value="set" checked>手对变三条</label>
+      <label class="check"><input type="checkbox" value="trips">三条或更好</label>
+      <label class="check"><input type="checkbox" value="straight" checked>顺子或更好</label>
+      <label class="check"><input type="checkbox" value="flush" checked>同花或更好</label>
+      <label class="check"><input type="checkbox" value="fullHouse">葫芦或更好</label>
+      <label class="check"><input type="checkbox" value="quads">四条</label>
+      <label class="check"><input type="checkbox" value="straightFlush">同花顺</label>
+      <label class="check"><input type="checkbox" value="gutshot" checked>卡顺补中</label>
+      <label class="check"><input type="checkbox" value="openEnded" checked>两头顺补中</label>
+      <label class="check"><input type="checkbox" value="flushDraw" checked>同花听牌补中</label>
+    </div>
+  </div>
+</aside>
+
+<main class="right">
+  <div class="panel hero">
+    <div class="head"><div><div class="title">计算概览</div><div class="desc" id="summary">当前使用精确公共牌组合枚举；胜率使用多核 Monte Carlo。</div></div><div class="status" id="status">等待计算</div></div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">当前成牌</div><div class="metric-value" id="made">—</div><div class="metric-foot" id="madeFoot">依据所有已知牌</div></div>
+      <div class="metric"><div class="metric-label">随机对手 Equity</div><div class="metric-value" id="equity">—</div><div class="metric-foot" id="equityFoot">默认 10,000 次并行模拟</div></div>
+      <div class="metric"><div class="metric-label">精确公共牌组合</div><div class="metric-value" id="combos">—</div><div class="metric-foot" id="comboFoot">不计发牌顺序</div></div>
+      <div class="metric"><div class="metric-label">计算线程</div><div class="metric-value" id="cores">—</div><div class="metric-foot">Web Worker 并行</div></div>
+    </div>
+    <div class="progress" id="progress"><i></i></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel result"><div class="title">目标事件概率</div><div class="desc section-description">分子与分母来自完整公共牌组合枚举，属于精确概率。</div><div class="probs" id="probList"><div class="empty">尚未生成结果</div></div></div>
+    <div class="panel explain"><div class="title">计算说明</div><div class="desc section-description compact">同一发牌组合可以同时命中多个事件，因此概率不能直接相加。</div><div id="formulaArea"><div class="formula"><div class="formula-label">计算结构</div><div class="formula-main">事件概率 = 命中组合数 ÷ 全部公共牌组合数</div><div class="formula-detail">随机对手胜率单独使用多线程模拟，并展示模拟次数。</div></div></div><div class="tags" id="outs"></div></div>
+  </div>
+
+  <div class="panel details">
+    <div class="toolbar"><div><div class="title">符合要求的发牌组合</div><div class="desc" id="detailNote">界面最多展示 1,500 条，导出包含当前收集的明细。</div></div><button class="btn" id="exportBtn">导出 CSV</button></div>
+    <div class="table-wrap"><table><thead><tr><th class="col-index">序号</th><th class="col-runout">后续公共牌</th><th class="col-hand">最终牌型</th><th>命中目标</th></tr></thead><tbody id="detailBody"><tr><td colspan="4" class="empty">尚未计算</td></tr></tbody></table></div>
+  </div>
+</main>
+</div>
+</section>
+
+<section class="tab" id="tab-common">
+<div class="panel page-panel">
+  <div class="page-head common-page-head">
+    <div><div class="title">按当前牌型查概率</div><div class="desc">先选择你现在的牌型或听牌，再看后续公共牌帮你完成目标牌型的概率。</div></div>
+    <div class="exact-legend"><i></i><span>全部由组合公式实时生成</span></div>
+  </div>
+  <div class="common-workbench">
+    <aside class="situation-panel">
+      <div class="common-step">第 1 步</div>
+      <div class="common-section-title">我现在是什么牌型？</div>
+      <div class="common-section-help">选择最贴近当前牌面的情况</div>
+      <div class="situation-choices" id="commonSituationChoices"></div>
+    </aside>
+    <section class="common-results-panel">
+      <div class="common-results-head">
+        <div><div class="common-step">第 2 步 · 查看命中率</div><h2 id="commonGroupTitle"></h2><p id="commonGroupDescription"></p></div>
+        <span class="scenario-count" id="commonScenarioCount"></span>
+      </div>
+      <div class="probability-column-guide"><span>你的具体情况</span><span>精确概率</span></div>
+      <div class="common-scenario-list" id="commonScenarioList"></div>
+    </section>
+  </div>
+  <section class="outs-calculator">
+    <div class="outs-control">
+      <div class="common-step">没找到完全对应的情况？</div>
+      <div class="common-section-title">自定义 outs</div>
+      <p>调整有效 outs 数量，计算转牌与河牌的精确命中率。</p>
+      <label for="commonOutsRange"><b id="commonOutsValue">9</b><span>outs</span></label>
+      <input id="commonOutsRange" type="range" min="1" max="20" value="9" step="1">
+      <div class="outs-scale"><span>1</span><span>10</span><span>20</span></div>
+    </div>
+    <div class="outs-results" id="commonOutsResults"></div>
+  </section>
+  <div class="common-caveat"><b>注意：</b>此处为成牌概率，并非最终胜率。outs 默认均为干净 outs，且命中后不会被反超；重叠 outs 只计一次。</div>
+</div>
+</section>
+
+<section class="tab active" id="tab-hands">
+<div class="panel page-panel">
+  <div class="hand-card-picker" aria-labelledby="handPickerTitle">
+    <div class="hand-picker-head">
+      <div><div class="hand-picker-title" id="handPickerTitle">选择你的两张手牌</div><div class="hand-picker-status" id="handPickerStatus" aria-live="polite">点击任意两张牌，选完后自动高亮对应胜率</div></div>
+      <span class="hand-picker-count" id="handPickerCount">0 / 2</span>
+    </div>
+    <div class="hand-card-deck" id="handCardPicker" role="group" aria-label="选择两张起手牌"></div>
+  </div>
+  <div class="hand-toolbar">
+    <div class="choice-group hand-player-picker"><div class="choice-label">当前场人数</div><div class="choices" id="handPlayersChoices"></div></div>
+    <div class="choice-group hand-data-scope"><div class="choice-label">胜率层级</div><div class="heat-legend" aria-label="胜率由低到高">
+      <span>低</span><i data-equity-tier="0"></i><i data-equity-tier="1"></i><i data-equity-tier="2"></i><i data-equity-tier="3"></i><i data-equity-tier="4"></i><i data-equity-tier="5"></i><span>高</span>
+    </div></div>
+  </div>
+  <div class="table-wrap hands-table-wrap"><table class="hands-table"><thead id="handsHead"></thead><tbody id="handsBody"></tbody></table></div>
+  <div class="small table-footnote">每个格子展示手牌类型及其 all-in preflop equity，不考虑位置、下注尺度、弃牌率和范围选择。每个格子预计算 100,000 次；最不利情况下 95% 抽样误差约为 ±0.31 个百分点。</div>
+</div>
+</section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module" src="./src/js/app.js?v=20260829-hand-picker"></script>
+</body>
+</html>

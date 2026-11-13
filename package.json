@@ -1,0 +1,18 @@
+{
+  "name": "texas-lab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check-syntax.mjs",
+    "test": "node --test && python -m unittest discover -s tests -p \"test_*.py\"",
+    "verify": "npm run check && npm test",
+    "smoke": "node scripts/browser-smoke.mjs",
+    "gpu-smoke": "python scripts/gpu-solver-smoke.py",
+    "train-common": "python scripts/train-common-blueprint.py",
+    "serve": "python server.py"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

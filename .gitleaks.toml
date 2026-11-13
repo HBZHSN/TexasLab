@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+# Generated solver / training output can contain large hands of simulated
+# poker data. It is excluded from version control and from secret scanning.
+[allowlist]
+paths = [
+  '''artifacts/''',
+  '''data/''',
+  '''logs/''',
+]
